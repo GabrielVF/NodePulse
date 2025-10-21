@@ -15,3 +15,6 @@ rich>=14.2.0
 
 # Process and system utilities
 psutil>=7.1.1
+
+# TOML configuration file parsing
+tomli>=2.0.0; python_version < '3.11'

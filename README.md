@@ -109,6 +109,7 @@ NodePulse is a Terminal User Interface (TUI) application that provides a real-ti
 - Block size and timestamp
 
 ### Additional Features
+- **Intelligent auto-detection** - Finds Bitcoin Core automatically (no manual configuration needed)
 - **Performance optimized** - Async RPC calls, tab-aware updates
 - Auto-refresh every 10 seconds (non-blocking)
 - Manual refresh with `r` key (instant)
@@ -118,6 +119,7 @@ NodePulse is a Terminal User Interface (TUI) application that provides a real-ti
 - Real-time clock in header
 - Custom ClickableLabel widgets with hover effects
 - Instant tab switching (no lag)
+- Cross-platform support (macOS, Linux, Windows)
 
 ## Requirements
 
@@ -159,7 +161,8 @@ python3 nodepulse.py
 ### Project Structure
 ```
 NodePulse/
-├── nodepulse.py              # Main application (~1800 lines)
+├── nodepulse.py              # Main application (~2000 lines)
+├── config.toml.example       # Example configuration file
 ├── screenshots/              # Application screenshots
 │   ├── 01-dashboard.png
 │   ├── 02-sync.png
@@ -220,7 +223,52 @@ Make sure your Bitcoin Core node is running:
 
 ## Configuration
 
-### Bitcoin Core Configuration
+### Automatic Bitcoin Core Detection
+
+NodePulse **automatically detects** your Bitcoin Core installation using intelligent cascade detection:
+
+1. **Environment Variable** - `BITCOIN_CLI_PATH`
+   ```bash
+   export BITCOIN_CLI_PATH=/custom/path/bitcoin-cli
+   ```
+
+2. **Config File** - `~/.config/nodepulse/config.toml` or `~/.nodepulse/config.toml`
+   ```toml
+   [bitcoin]
+   cli_path = "/usr/local/bin/bitcoin-cli"
+   ```
+
+3. **System PATH** - Searches for `bitcoin-cli` in your PATH
+
+4. **Standard Locations**:
+   - **macOS**: `~/bin/`, `/usr/local/bin/`, `/opt/homebrew/bin/`, `/Applications/Bitcoin-Qt.app/Contents/MacOS/`
+   - **Linux**: `~/bin/`, `/usr/bin/`, `/usr/local/bin/`, `~/.local/bin/`
+   - **Windows**: `C:\Program Files\Bitcoin\`, `%APPDATA%\Bitcoin\`
+
+5. **Bitcoin Datadir Detection** - Searches near Bitcoin data directory
+
+6. **Fallback** - `~/bin/bitcoin-cli`
+
+**Detection info is shown in alerts** when NodePulse starts, indicating which method found your Bitcoin CLI.
+
+### Configuration File (Optional)
+
+Create a config file for custom settings:
+
+```bash
+# Create config directory
+mkdir -p ~/.config/nodepulse
+
+# Copy example config
+cp config.toml.example ~/.config/nodepulse/config.toml
+
+# Edit with your settings
+nano ~/.config/nodepulse/config.toml
+```
+
+See `config.toml.example` for all available options.
+
+### Bitcoin Core Settings Editor
 
 NodePulse v1.3 includes a built-in configuration editor accessible from the **Settings tab** (press `5`). You can:
 
@@ -232,16 +280,10 @@ NodePulse v1.3 includes a built-in configuration editor accessible from the **Se
 - Apply changes with automatic backups
 - Restart node after configuration updates
 
-### Manual Configuration
-
-NodePulse automatically detects your Bitcoin Core installation at:
-- `~/bin/bitcoin-cli` (default)
-- Bitcoin data directory: `~/Library/Application Support/Bitcoin/` (macOS)
-- Configuration file: `~/Library/Application Support/Bitcoin/bitcoin.conf`
-
-If your `bitcoin-cli` is located elsewhere, you can:
-1. Edit the `nodepulse.py` file and change the `bitcoin_cli_path` parameter
-2. Or create a launcher script that sets the path
+This edits your `bitcoin.conf` file directly:
+- **macOS**: `~/Library/Application Support/Bitcoin/bitcoin.conf`
+- **Linux**: `~/.bitcoin/bitcoin.conf`
+- **Windows**: `%APPDATA%\Bitcoin\bitcoin.conf`
 
 ## Application Layout
 
@@ -327,12 +369,27 @@ pip3 install --user textual rich
 
 ### bitcoin-cli command not found
 
-**Solution:** Check that bitcoin-cli is installed at `~/bin/bitcoin-cli`:
+**Solution 1:** Set environment variable:
 ```bash
-ls -lh ~/bin/bitcoin-cli
+export BITCOIN_CLI_PATH=/path/to/bitcoin-cli
 ```
 
-If it's elsewhere, edit `~/bin/nodepulse` and update the `BITCOIN_CLI` path.
+**Solution 2:** Create config file:
+```bash
+mkdir -p ~/.config/nodepulse
+cat > ~/.config/nodepulse/config.toml << EOF
+[bitcoin]
+cli_path = "/path/to/bitcoin-cli"
+EOF
+```
+
+**Solution 3:** Add bitcoin-cli to your PATH:
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+export PATH="$PATH:/path/to/bitcoin/bin"
+```
+
+NodePulse will automatically detect it on next launch and show detection info in alerts.
 
 ## Development
 

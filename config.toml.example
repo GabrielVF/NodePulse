@@ -1,0 +1,49 @@
+# NodePulse Configuration File
+#
+# Copy this file to one of these locations:
+#   ~/.config/nodepulse/config.toml
+#   ~/.nodepulse/config.toml
+#
+# All settings are optional. NodePulse will use intelligent detection
+# and sensible defaults if this file doesn't exist.
+
+[bitcoin]
+# Path to bitcoin-cli executable
+# If not specified, NodePulse will search in:
+#  1. System PATH
+#  2. Standard installation locations
+#  3. ~/bin/bitcoin-cli (fallback)
+# cli_path = "/usr/local/bin/bitcoin-cli"
+
+# Path to Bitcoin Core data directory
+# Default is platform-specific:
+#   macOS: ~/Library/Application Support/Bitcoin
+#   Linux: ~/.bitcoin
+#   Windows: %APPDATA%\Bitcoin
+# datadir = "~/Library/Application Support/Bitcoin"
+
+[nodepulse]
+# Refresh interval in seconds (minimum: 5, maximum: 60)
+# Default: 10
+# refresh_interval = 10
+
+# Color theme (options: dark, light, matrix, retro)
+# Default: retro
+# theme = "retro"
+
+# Show detection info on startup
+# Default: true
+# show_detection_info = true
+
+[alerts]
+# Minimum peer count before showing warning
+# Default: 3
+# min_peer_count = 3
+
+# Show sync completion notification
+# Default: true
+# notify_sync_complete = true
+
+# Alert history size (number of alerts to keep)
+# Default: 5
+# history_size = 5

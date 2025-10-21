@@ -7,11 +7,23 @@ A beautiful terminal UI for monitoring your Bitcoin node in real-time.
 import json
 import subprocess
 import os
+import sys
+import shutil
+import platform
 import psutil
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 from collections import deque
+
+# TOML config support (Python 3.11+ has tomllib built-in)
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        tomllib = None
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -23,6 +35,122 @@ from rich.text import Text
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, TaskID
 from rich.table import Table
+
+
+class BitcoinCliDetector:
+    """Intelligent detection of bitcoin-cli location"""
+
+    @staticmethod
+    def find_bitcoin_cli():
+        """
+        Find bitcoin-cli using cascading detection strategy:
+        1. Environment variable (BITCOIN_CLI_PATH)
+        2. Config file (~/.config/nodepulse/config.toml)
+        3. System PATH
+        4. Standard installation locations
+        5. Detect from Bitcoin datadir
+        6. Fallback to ~/bin/bitcoin-cli
+
+        Returns: (path, detection_method) or (None, None) if not found
+        """
+
+        # 1. Check environment variable
+        env_path = os.getenv('BITCOIN_CLI_PATH')
+        if env_path and Path(env_path).is_file():
+            return env_path, "environment variable BITCOIN_CLI_PATH"
+
+        # 2. Check config file
+        config_paths = [
+            Path.home() / ".config" / "nodepulse" / "config.toml",
+            Path.home() / ".nodepulse" / "config.toml",
+        ]
+
+        for config_path in config_paths:
+            if config_path.exists() and tomllib:
+                try:
+                    with open(config_path, 'rb') as f:
+                        config = tomllib.load(f)
+                        cli_path = config.get('bitcoin', {}).get('cli_path')
+                        if cli_path:
+                            cli_path = os.path.expanduser(cli_path)
+                            if Path(cli_path).is_file():
+                                return cli_path, f"config file {config_path}"
+                except Exception:
+                    pass
+
+        # 3. Check system PATH
+        path_cli = shutil.which('bitcoin-cli')
+        if path_cli:
+            return path_cli, "system PATH"
+
+        # 4. Search standard locations
+        system = platform.system()
+        standard_locations = []
+
+        if system == "Darwin":  # macOS
+            standard_locations = [
+                Path.home() / "bin" / "bitcoin-cli",
+                Path("/usr/local/bin/bitcoin-cli"),
+                Path("/opt/homebrew/bin/bitcoin-cli"),
+                Path("/Applications/Bitcoin-Qt.app/Contents/MacOS/bitcoin-cli"),
+            ]
+        elif system == "Linux":
+            standard_locations = [
+                Path.home() / "bin" / "bitcoin-cli",
+                Path("/usr/bin/bitcoin-cli"),
+                Path("/usr/local/bin/bitcoin-cli"),
+                Path.home() / ".local" / "bin" / "bitcoin-cli",
+            ]
+        elif system == "Windows":
+            standard_locations = [
+                Path(os.getenv('ProgramFiles', 'C:\\Program Files')) / "Bitcoin" / "daemon" / "bitcoin-cli.exe",
+                Path(os.getenv('APPDATA', '')) / "Bitcoin" / "bitcoin-cli.exe",
+            ]
+
+        for location in standard_locations:
+            if location.is_file():
+                return str(location), f"standard location ({system})"
+
+        # 5. Try to detect from Bitcoin datadir
+        datadir_locations = []
+        if system == "Darwin":
+            datadir_locations = [
+                Path.home() / "Library" / "Application Support" / "Bitcoin",
+            ]
+        elif system == "Linux":
+            datadir_locations = [
+                Path.home() / ".bitcoin",
+            ]
+        elif system == "Windows":
+            datadir_locations = [
+                Path(os.getenv('APPDATA', '')) / "Bitcoin",
+            ]
+
+        for datadir in datadir_locations:
+            # Look for bitcoin-cli in parent directories of datadir
+            possible_bin = datadir.parent / "bin" / "bitcoin-cli"
+            if possible_bin.is_file():
+                return str(possible_bin), "detected from Bitcoin datadir"
+
+        # 6. Fallback to default
+        fallback = Path.home() / "bin" / "bitcoin-cli"
+        if fallback.is_file():
+            return str(fallback), "default location"
+
+        # Not found anywhere
+        return None, None
+
+    @staticmethod
+    def get_detection_message(path, method):
+        """Generate user-friendly detection message"""
+        if path:
+            return f"✓ Bitcoin CLI detected: {path}\n  Method: {method}"
+        else:
+            return (
+                "✗ Bitcoin CLI not found!\n"
+                "  Please install Bitcoin Core or set BITCOIN_CLI_PATH environment variable.\n"
+                "  See README.md for configuration options."
+            )
 
 
 class ConfirmDialog(ModalScreen):
@@ -75,9 +203,20 @@ class ConfirmDialog(ModalScreen):
 class BitcoinNodeController:
     """Controls for starting/stopping Bitcoin node"""
 
-    def __init__(self, bitcoind_path=None):
-        self.bitcoind = bitcoind_path or os.path.expanduser("~/bin/bitcoind")
-        self.bitcoin_cli = os.path.expanduser("~/bin/bitcoin-cli")
+    def __init__(self, bitcoind_path=None, bitcoin_cli_path=None):
+        # Use provided path or detect automatically
+        if bitcoin_cli_path:
+            self.bitcoin_cli = bitcoin_cli_path
+        else:
+            detected_cli, _ = BitcoinCliDetector.find_bitcoin_cli()
+            self.bitcoin_cli = detected_cli or os.path.expanduser("~/bin/bitcoin-cli")
+
+        # bitcoind is usually in the same directory as bitcoin-cli
+        if bitcoind_path:
+            self.bitcoind = bitcoind_path
+        else:
+            cli_dir = Path(self.bitcoin_cli).parent
+            self.bitcoind = str(cli_dir / "bitcoind")
 
     def is_running(self):
         """Check if bitcoind is running"""
@@ -140,7 +279,12 @@ class BitcoinNodeData:
     """Handles communication with Bitcoin Core via bitcoin-cli"""
 
     def __init__(self, bitcoin_cli_path=None):
-        self.bitcoin_cli = bitcoin_cli_path or os.path.expanduser("~/bin/bitcoin-cli")
+        # Use provided path or detect automatically
+        if bitcoin_cli_path:
+            self.bitcoin_cli = bitcoin_cli_path
+        else:
+            detected_cli, _ = BitcoinCliDetector.find_bitcoin_cli()
+            self.bitcoin_cli = detected_cli or os.path.expanduser("~/bin/bitcoin-cli")
 
     async def run_command(self, *args):
         """Execute bitcoin-cli command and return JSON result (async)"""
@@ -1676,6 +1820,13 @@ class NodePulseApp(App):
         # Update controls and settings panels with alerts reference
         self.controls_panel.alerts_panel = self.alerts_panel
         self.settings_panel.alerts_panel = self.alerts_panel
+
+        # Show Bitcoin CLI detection info
+        detected_path, detection_method = BitcoinCliDetector.find_bitcoin_cli()
+        if detected_path:
+            self.alerts_panel.add_alert(f"Bitcoin CLI: {Path(detected_path).name} ({detection_method})", "info")
+        else:
+            self.alerts_panel.add_alert("Bitcoin CLI not detected - check configuration", "warning")
 
         self.alerts_panel.add_alert("NodePulse v1.3 started", "success")
         self.run_worker(self.refresh_data(), exclusive=True)
