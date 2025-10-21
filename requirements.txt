@@ -1,0 +1,17 @@
+# NodePulse Dependencies
+# Bitcoin Core Terminal Dashboard
+#
+# Install all dependencies with:
+#   pip3 install --user -r requirements.txt
+#
+# Or for development:
+#   pip3 install --user --upgrade -r requirements.txt
+
+# Terminal UI framework
+textual>=6.3.0
+
+# Rich text rendering and formatting
+rich>=14.2.0
+
+# Process and system utilities
+psutil>=7.1.1
